@@ -1,0 +1,40 @@
+services:
+
+  # BACKEND (built from local Dockerfile in the backend/ directory)
+  backend:
+    build: ./backend
+    ports:
+      - "8080:8080"
+    environment:
+      # ${VAR} means: take value from environment or .env file
+      # In this case, .env file has POSTGRES_PASSWORD and POSTGRES_DB defined
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    depends_on:
+      - db
+
+  # FRONTEND (prebuilt image)
+  frontend:
+    image: nginx:latest
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+  # DATABASE (PostgreSQL)
+  db:
+    image: postgres:16
+    environment:
+      # These values come from .env file
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      # You may remove this in production to avoid exposing DB
+      - "5432:5432"
+    volumes:
+      # Keeps database data even if container is removed
+      - db_data:/var/lib/postgresql/data
+
+# Persistent storage
+volumes:
+  db_data:
