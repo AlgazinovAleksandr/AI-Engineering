@@ -1,0 +1,163 @@
+# ============================================================
+# Airflow on Docker Compose  —  LocalExecutor setup
+# ============================================================
+# Architecture:
+#   postgres         – stores all Airflow metadata (DAG state, task logs, etc.)
+#   airflow-init     – one-time job: migrates the DB schema and creates admin user
+#   airflow-webserver – the UI you open at http://localhost:8080
+#   airflow-scheduler – reads DAG files, decides what to run, and (with LocalExecutor)
+#                       also executes the tasks directly in its own process
+#
+# LocalExecutor vs CeleryExecutor:
+#   LocalExecutor is simpler — no Redis, no separate worker containers.
+#   Tasks run as subprocesses of the scheduler. Fine for a single machine.
+# ============================================================
+
+version: '3.8'
+
+# YAML anchor: shared config block referenced by all Airflow services below.
+# <<: *airflow-common means "copy everything from this block into my service".
+x-airflow-common:
+  &airflow-common
+  build: .                    # build from our Dockerfile (not a pre-built image)
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+
+    # Connection string to the Postgres metadata database.
+    # Format: dialect+driver://user:password@host/dbname
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+
+    # Fernet key encrypts sensitive values (passwords, connection strings) in the DB.
+    # Must be stable across restarts. Generate once with:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
+
+    # Suppress built-in tutorial DAGs so the UI only shows our pipelines.
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+
+    # Random string used to sign web session cookies.
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${SECRET_KEY}
+
+    # Exposes a /health endpoint on port 8974 used by the scheduler healthcheck.
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+
+    # Add /opt/airflow/src to Python's module search path so that DAG files
+    # can import directly: `from preprocess import run` (no package prefix needed).
+    PYTHONPATH: /opt/airflow/src
+
+  volumes:
+    # Mount local directories into the container.
+    # Changes to DAG or src files are picked up WITHOUT rebuilding the image.
+    - ./dags:/opt/airflow/dags           # Airflow scans this for DAG files
+    - ./src:/opt/airflow/src             # our ML pipeline source code
+    - ./data:/opt/airflow/data           # raw dataset (read-only in practice)
+    - ./artifacts:/opt/airflow/artifacts # models, vectorizer, metrics (written at runtime)
+    - ./logs:/opt/airflow/logs           # Airflow task logs
+    - ./plugins:/opt/airflow/plugins     # custom Airflow plugins (empty for now)
+
+  depends_on:
+    &airflow-common-depends-on
+    postgres:
+      condition: service_healthy         # don't start until Postgres is ready
+
+
+services:
+
+  # ----------------------------------------------------------
+  # Metadata database
+  # ----------------------------------------------------------
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  # ----------------------------------------------------------
+  # One-time initialisation (runs once, then exits)
+  # ----------------------------------------------------------
+  # This service:
+  #   1. Creates artifact subdirectories on the mounted volume
+  #   2. Runs `airflow db migrate` to create/update the DB schema
+  #   3. Creates the admin web UI user
+  # The webserver and scheduler wait for this service to finish (exit 0).
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        mkdir -p /opt/airflow/logs \
+                 /opt/airflow/artifacts/vectorizer \
+                 /opt/airflow/artifacts/models \
+                 /opt/airflow/artifacts/metrics \
+                 /opt/airflow/artifacts/preprocessed \
+                 /opt/airflow/artifacts/features
+        airflow db migrate
+        airflow users create \
+          --username "${AIRFLOW_WWW_USER_USERNAME}" \
+          --password "${AIRFLOW_WWW_USER_PASSWORD}" \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com || true
+        echo "Airflow init complete."
+    environment:
+      <<: *airflow-common-env
+      AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_WWW_USER_USERNAME:-admin}
+      AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_WWW_USER_PASSWORD:-admin}
+    restart: on-failure
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ----------------------------------------------------------
+  # Web UI  →  http://localhost:8080
+  # ----------------------------------------------------------
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ----------------------------------------------------------
+  # Scheduler (also executes tasks with LocalExecutor)
+  # ----------------------------------------------------------
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+
+volumes:
+  postgres-db-volume:

@@ -143,6 +143,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+airflow_venv/
 
 # Spyder project settings
 .spyderproject
@@ -201,9 +202,15 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 CLAUDE.md
-airflow
 
 # Marimo
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Airflow / ML pipeline
+catboost_info/
+airflow/logs/*
+!airflow/logs/.gitkeep
+airflow/artifacts/*
+!airflow/artifacts/.gitkeep
