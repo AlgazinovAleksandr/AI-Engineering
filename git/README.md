@@ -89,6 +89,36 @@ Example: git rm -r old_folder
 
 Then we can commit these changes and push them - files will be removed from the remote repository as well
 
+## undo the last commit (before pushing)
+
+```
+git reset --soft HEAD~1  - undo the commit, keep changes staged (ready to re-commit)
+git reset HEAD~1         - undo the commit, keep changes in files but unstaged
+```
+
+`HEAD~1` means "one commit before the current one". In both cases the files stay in your local filesystem — the changes are not lost. The difference is only whether they are staged or not:
+
++ `--soft` keeps changes **staged** (as if you just ran `git add`) — useful if you want to re-commit immediately with small fixes
++ no flag keeps changes **unstaged** (as if you just edited the files) — more commonly useful
+
+Note: only do this before pushing. If the commit is already on the remote, see `git revert` instead.
+
+## inspect a commit
+
+After you have already committed, `git diff` and `git status` won't show the changes (the working tree is clean). To see what is inside the last commit:
+
+```
+git show --stat      - list of changed files with lines added/removed
+git show             - full diff of the last commit
+git show --name-only - just the list of changed files
+```
+
+`git show` defaults to the latest commit (HEAD). You can also inspect any other commit by passing its hash:
+
+```
+git show abc1234
+```
+
 ## status
 
 ```
