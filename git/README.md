@@ -115,6 +115,15 @@ git show --name-only - just the list of changed files
 
 `git show` defaults to the latest commit (HEAD). You can also inspect any other commit by passing its hash:
 
+The output is displayed in a pager (less). Navigation keys:
+
++ `Space` or `f` - next page
++ `b` - previous page
++ arrow keys - line by line
++ `q` - quit
+
+The same navigation applies to other git commands that use the pager, like `git log`.
+
 ```
 git show abc1234
 ```
