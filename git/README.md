@@ -78,16 +78,42 @@ We do not need to do anything here except for exiting vim (:wq + enter), and the
 Sometimes we want to remove some files from the directory. Deleting them from VScode folder is not enough. We need to delete them from git as well. We can do this with the following commands:
 
 ```
-git rm file_name - remove a file from git
+git rm file_name - remove a file from git AND from the filesystem (disk)
 
 Example: git rm old_script.py
 
-git rm -r folder_name - remove a folder from git
+git rm -r folder_name - remove a folder from git AND from the filesystem (disk)
 
 Example: git rm -r old_folder
 ```
 
 Then we can commit these changes and push them - files will be removed from the remote repository as well
+
+### git rm vs git rm --cached
+
+`git rm <file>` removes the file from **both** git tracking and your disk. It is equivalent to:
+
+```
+rm file_name         - delete the file from disk
+git add file_name    - stage the deletion
+```
+
+`git rm --cached <file>` removes the file from git tracking only — the file **stays on your disk**. Git will no longer track it after the next commit.
+
+When to use each:
+
++ `git rm file_name` — you want to delete the file entirely
++ `git rm --cached file_name` — you want to stop tracking the file but keep it locally (e.g. you accidentally committed a `.env` file)
+
+Common workflow for untracking a sensitive file:
+
+```
+git rm --cached .env
+echo ".env" >> .gitignore
+git commit -m "stop tracking .env"
+```
+
+The `.env` file stays on your machine, but Git no longer tracks it going forward
 
 ## undo the last commit (before pushing)
 
@@ -101,7 +127,44 @@ git reset HEAD~1         - undo the commit, keep changes in files but unstaged
 + `--soft` keeps changes **staged** (as if you just ran `git add`) — useful if you want to re-commit immediately with small fixes
 + no flag keeps changes **unstaged** (as if you just edited the files) — more commonly useful
 
+To undo multiple commits at once, replace `~1` with the number of commits you want to undo:
+
+```
+git reset --soft HEAD~3  - undo last 3 commits, keep changes staged
+git reset HEAD~3         - undo last 3 commits, keep changes unstaged
+```
+
+Your files stay safe either way — only the commits are removed.
+
 Note: only do this before pushing. If the commit is already on the remote, see `git revert` instead.
+
+## discard all local changes (before git add / commit)
+
+Suppose you made some changes but have not run `git add` or `git commit` yet, and you want to throw everything away and get back to the last pushed state.
+
+To discard changes to **tracked files** (files that already exist in git):
+
+```
+git checkout -- .   - restore all tracked files to their last committed state
+```
+
+This does NOT remove new files you created. To also delete new (untracked) files:
+
+```
+git clean -fd       - delete all untracked files and folders
+```
+
++ `-f` means force (required by git as a safety measure)
++ `-d` includes untracked folders, not just files
+
+To do both in one go:
+
+```
+git checkout -- .
+git clean -fd
+```
+
+After this, your working directory will look exactly like the last commit that was pushed. **This cannot be undone** — the changes are permanently lost.
 
 ## inspect a commit
 
