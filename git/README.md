@@ -1,5 +1,27 @@
 ## Useful git commands (besides pull, commit, and push)
 
+## removing .git after cloning a repo
+
+When you clone a repo, git automatically creates a `.git` folder inside it. This folder contains the entire history and configuration of the **original** repo you cloned from.
+
+If you want to use the cloned code as a **starting point for your own new project**, you should delete this `.git` folder. Otherwise your project is still connected to the original repo's history, and if you run `git push` you will be pushing to the original repo (or get an error if you don't have access).
+
+```
+rm -rf .git   - remove the .git folder completely
+```
+
+After this, the folder is just plain code with no git history. You can then start fresh:
+
+```
+git init               - initialize a new git repo
+git add .
+git commit -m "initial commit"
+```
+
+And connect it to your own remote repository.
+
+If you just want to use the code locally without any git tracking at all, `rm -rf .git` is enough — you don't need to do anything else.
+
 ## branches
 
 ```
